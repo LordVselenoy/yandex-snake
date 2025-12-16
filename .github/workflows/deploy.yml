@@ -10,13 +10,18 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    # 1. Логин в Docker (ИСПОЛЬЗУЕМ НОВЫЙ ЭКШЕН)
-    - name: Yandex Cloud CR Login
-      uses: yc-actions/yc-cr-login@v2
+    # 1. Устанавливаем официальную утилиту YC CLI (чтобы работали команды yc)
+    - name: Install YC CLI
+      uses: yc-actions/setup-yc@v1
       with:
         yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
-    # 2. Сборка и отправка образа
+    # 2. Логин в Docker реестр (через утилиту yc)
+    - name: Login to Yandex Container Registry
+      run: |
+        yc container registry configure-docker
+
+    # 3. Сборка и отправка образа
     - name: Build and Push Docker Image
       env:
         CR_REGISTRY: crplem6q81s99h12l3s5
@@ -26,18 +31,16 @@ jobs:
         docker build -t cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG .
         docker push cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG
 
-    # 3. Установка kubectl
+    # 4. Установка kubectl
     - name: Install kubectl
       uses: azure/setup-kubectl@v3
 
-    # 4. Подключение к кластеру (ИСПОЛЬЗУЕМ НОВЫЙ ЭКШЕН)
-    - name: Get K8s credentials
-      uses: yc-actions/yc-k8s-cluster-get-credentials@v1
-      with:
-        yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
-        cluster-id: catg7jnf6f1gdsu6moo4  # Твой новый кластер
+    # 5. Получение доступов к кластеру (ЧЕРЕЗ КОМАНДУ, А НЕ ЭКШЕН)
+    - name: Configure K8s Context
+      run: |
+        yc managed-kubernetes cluster get-credentials --id catg7jnf6f1gdsu6moo4 --external --force
 
-    # 5. Деплой
+    # 6. Деплой
     - name: Deploy to K8s
       env:
         CR_REGISTRY: crplem6q81s99h12l3s5
