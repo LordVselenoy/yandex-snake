@@ -10,11 +10,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    # 1. Логин в Yandex Docker
+    # 1. Логин в Docker (ИСПОЛЬЗУЕМ НОВЫЙ ЭКШЕН)
     - name: Yandex Cloud CR Login
-      uses: yandex-cloud/login@v1
+      uses: yc-actions/yc-cr-login@v2
       with:
-        service-account-key: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
     # 2. Сборка и отправка образа
     - name: Build and Push Docker Image
@@ -30,12 +30,12 @@ jobs:
     - name: Install kubectl
       uses: azure/setup-kubectl@v3
 
-    # 4. Подключение к кластеру (Твой новый ID)
+    # 4. Подключение к кластеру (ИСПОЛЬЗУЕМ НОВЫЙ ЭКШЕН)
     - name: Get K8s credentials
-      uses: yandex-cloud/k8s-get-credentials@v1
+      uses: yc-actions/yc-k8s-cluster-get-credentials@v1
       with:
-        service-account-key: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
-        cluster-id: catg7jnf6f1gdsu6moo4
+        yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        cluster-id: catg7jnf6f1gdsu6moo4  # Твой новый кластер
 
     # 5. Деплой
     - name: Deploy to K8s
@@ -44,9 +44,6 @@ jobs:
         CR_REPOSITORY: snake-game
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        # Подставляем имя образа в манифест
         sed -i "s|IMAGE_PLACEHOLDER|cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG|g" k8s/deployment.yaml
-        
-        # Применяем
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
