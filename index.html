@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Yandex Cloud Snake</title>
+    <style>
+        /* CSS Стили - Темная тема */
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify_content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            text-shadow: 0 0 10px #00ff88;
+            margin-bottom: 10px;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+            border: 2px solid #333;
+        }
+
+        canvas {
+            background-color: #000;
+            display: block;
+        }
+
+        #score-board {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        /* Экран Game Over и ввода имени */
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: none; /* Скрыт по умолчанию */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        input {
+            background: #222;
+            border: 1px solid #00ff88;
+            color: #fff;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 16px;
+            margin: 10px 0;
+            outline: none;
+        }
+
+        button {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #00cc6a;
+            box-shadow: 0 0 15px #00ff88;
+        }
+
+        /* Таблица лидеров */
+        #leaderboard {
+            margin-top: 20px;
+            width: 300px;
+            text-align: left;
+        }
+        
+        #leaderboard h3 {
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+
+        .leader-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #222;
+        }
+
+        .highlight {
+            color: #00ff88;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-board">Счет: <span id="score">0</span></div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        
+        <!-- Оверлей при проигрыше -->
+        <div id="game-over-screen">
+            <h2 style="color: #ff4444;">GAME OVER</h2>
+            <p>Твой счет: <span id="final-score">0</span></p>
+            <input type="text" id="player-name" placeholder="Введи свой ник" maxlength="10">
+            <button onclick="saveScoreAndRestart()">Сохранить и Заново</button>
+        </div>
+    </div>
+
+    <div id="leaderboard">
+        <h3>ТОП ИГРОКОВ (Local)</h3>
+        <div id="leader-list"></div>
+    </div>
+
+    <script>
+        // --- КОНФИГУРАЦИЯ ---
+        const CANVAS_BORDER_COLOUR = '#333';
+        const CANVAS_BACKGROUND_COLOUR = "black";
+        const SNAKE_COLOUR = '#00ff88';
+        const SNAKE_BORDER_COLOUR = '#004422';
+        const FOOD_COLOUR = '#ff4444';
+        const GAME_SPEED = 100;
+
+        // --- ПЕРЕМЕННЫЕ ИГРЫ ---
+        let snake = [
+            {x: 200, y: 200},
+            {x: 190, y: 200},
+            {x: 180, y: 200},
+            {x: 170, y: 200},
+            {x: 160, y: 200}
+        ];
+        let score = 0;
+        let changingDirection = false;
+        let food_x;
+        let food_y;
+        let dx = 10;
+        let dy = 0;
+        let gameRunning = true;
+
+        // Элементы DOM
+        const gameCanvas = document.getElementById("gameCanvas");
+        const ctx = gameCanvas.getContext("2d");
+        const scoreElement = document.getElementById('score');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreElement = document.getElementById('final-score');
+        const playerNameInput = document.getElementById('player-name');
+        const leaderListElement = document.getElementById('leader-list');
+
+        // Запуск
+        main();
+        createFood();
+        updateLeaderboardDisplay();
+        document.addEventListener("keydown", changeDirection);
+
+        // --- ОСНОВНОЙ ЦИКЛ ---
+        function main() {
+            if (didGameEnd()) {
+                showGameOver();
+                return;
+            }
+
+            setTimeout(function onTick() {
+                changingDirection = false;
+                clearCanvas();
+                drawFood();
+                advanceSnake();
+                drawSnake();
+                main();
+            }, GAME_SPEED)
+        }
+
+        // --- ЛОГИКА ---
+        function clearCanvas() {
+            ctx.fillStyle = CANVAS_BACKGROUND_COLOUR;
+            ctx.strokestyle = CANVAS_BORDER_COLOUR;
+            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            ctx.strokeRect(0, 0, gameCanvas.width, gameCanvas.height);
+        }
+
+        function drawSnake() {
+            snake.forEach(drawSnakePart);
+        }
+
+        function drawSnakePart(snakePart) {
+            ctx.fillStyle = SNAKE_COLOUR;
+            ctx.strokestyle = SNAKE_BORDER_COLOUR;
+            ctx.fillRect(snakePart.x, snakePart.y, 10, 10);
+            ctx.strokeRect(snakePart.x, snakePart.y, 10, 10);
+        }
+
+        function advanceSnake() {
+            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            snake.unshift(head);
+
+            const didEatFood = snake[0].x === food_x && snake[0].y === food_y;
+            if (didEatFood) {
+                score += 10;
+                scoreElement.innerHTML = score;
+                createFood();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function didGameEnd() {
+            for (let i = 4; i < snake.length; i++) {
+                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) return true;
+            }
+            const hitLeftWall = snake[0].x < 0;
+            const hitRightWall = snake[0].x > gameCanvas.width - 10;
+            const hitTopWall = snake[0].y < 0;
+            const hitBottomWall = snake[0].y > gameCanvas.height - 10;
+            return hitLeftWall || hitRightWall || hitTopWall || hitBottomWall;
+        }
+
+        function createFood() {
+            food_x = randomTen(0, gameCanvas.width - 10);
+            food_y = randomTen(0, gameCanvas.height - 10);
+            snake.forEach(function isFoodOnSnake(part) {
+                const foodIsoNsnake = part.x == food_x && part.y == food_y;
+                if (foodIsoNsnake) createFood();
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = FOOD_COLOUR;
+            ctx.strokestyle = 'darkred';
+            ctx.fillRect(food_x, food_y, 10, 10);
+            ctx.strokeRect(food_x, food_y, 10, 10);
+        }
+
+        function randomTen(min, max) {
+            return Math.round((Math.random() * (max - min) + min) / 10) * 10;
+        }
+
+        function changeDirection(event) {
+            const LEFT_KEY = 37;
+            const RIGHT_KEY = 39;
+            const UP_KEY = 38;
+            const DOWN_KEY = 40;
+
+            if (changingDirection) return;
+            changingDirection = true;
+            
+            const keyPressed = event.keyCode;
+            const goingUp = dy === -10;
+            const goingDown = dy === 10;
+            const goingRight = dx === 10;
+            const goingLeft = dx === -10;
+
+            if (keyPressed === LEFT_KEY && !goingRight) { dx = -10; dy = 0; }
+            if (keyPressed === UP_KEY && !goingDown) { dx = 0; dy = -10; }
+            if (keyPressed === RIGHT_KEY && !goingLeft) { dx = 10; dy = 0; }
+            if (keyPressed === DOWN_KEY && !goingUp) { dx = 0; dy = 10; }
+        }
+
+        // --- UI и ЛИДЕРБОРД ---
+        function showGameOver() {
+            gameRunning = false;
+            finalScoreElement.innerText = score;
+            gameOverScreen.style.display = 'flex';
+            playerNameInput.focus();
+        }
+
+        function saveScoreAndRestart() {
+            const name = playerNameInput.value.trim() || "Unknown";
+            
+            // Получаем текущие рекорды из LocalStorage
+            let leaders = JSON.parse(localStorage.getItem('snakeLeaderboard')) || [];
+            
+            // Добавляем новый
+            leaders.push({ name: name, score: score });
+            
+            // Сортируем по убыванию
+            leaders.sort((a, b) => b.score - a.score);
+            
+            // Оставляем только топ 5
+            leaders = leaders.slice(0, 5);
+            
+            // Сохраняем обратно
+            localStorage.setItem('snakeLeaderboard', JSON.stringify(leaders));
+
+            // Перезагружаем страницу для новой игры
+            location.reload();
+        }
+
+        function updateLeaderboardDisplay() {
+            let leaders = JSON.parse(localStorage.getItem('snakeLeaderboard')) || [];
+            leaderListElement.innerHTML = '';
+            
+            if (leaders.length === 0) {
+                leaderListElement.innerHTML = '<div style="color: #666; font-size: 14px;">Пока пусто...</div>';
+                return;
+            }
+
+            leaders.forEach((player, index) => {
+                const div = document.createElement('div');
+                div.className = 'leader-item';
+                div.innerHTML = `
+                    <span class="${index === 0 ? 'highlight' : ''}">${index + 1}. ${player.name}</span>
+                    <span>${player.score}</span>
+                `;
+                leaderListElement.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>
