@@ -1,0 +1,52 @@
+name: Deploy to Yandex Cloud
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    # 1. Логин в Yandex Docker
+    - name: Yandex Cloud CR Login
+      uses: yandex-cloud/login@v1
+      with:
+        service-account-key: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+    # 2. Сборка и отправка образа
+    - name: Build and Push Docker Image
+      env:
+        CR_REGISTRY: crplem6q81s99h12l3s5
+        CR_REPOSITORY: snake-game
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG .
+        docker push cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG
+
+    # 3. Установка kubectl
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+
+    # 4. Подключение к кластеру (Твой новый ID)
+    - name: Get K8s credentials
+      uses: yandex-cloud/k8s-get-credentials@v1
+      with:
+        service-account-key: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        cluster-id: catg7jnf6f1gdsu6moo4
+
+    # 5. Деплой
+    - name: Deploy to K8s
+      env:
+        CR_REGISTRY: crplem6q81s99h12l3s5
+        CR_REPOSITORY: snake-game
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Подставляем имя образа в манифест
+        sed -i "s|IMAGE_PLACEHOLDER|cr.yandex/$CR_REGISTRY/$CR_REPOSITORY:$IMAGE_TAG|g" k8s/deployment.yaml
+        
+        # Применяем
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
